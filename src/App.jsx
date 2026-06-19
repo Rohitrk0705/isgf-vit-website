@@ -121,7 +121,7 @@ function GridField() {
         dx: horiz ? (Math.random() < 0.5 ? 1 : -1) : 0,
         dy: horiz ? 0 : (Math.random() < 0.5 ? 1 : -1),
         t: 0,
-        speed: 0.010 + Math.random() * 0.012,
+        speed: 0.014 + Math.random() * 0.016,
         color: COLORS[(Math.random() * COLORS.length) | 0],
         trail: [],
       });
@@ -146,7 +146,7 @@ function GridField() {
 
     const drawGrid = (off) => {
       ctx.lineWidth = 1;
-      ctx.strokeStyle = rgba("#38BDF8", 0.05);
+      ctx.strokeStyle = rgba("#38BDF8", 0.066);
       for (let c = -1; c <= cols; c++) {
         const x = sx(c, off);
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
@@ -182,8 +182,8 @@ function GridField() {
         const x = sx(s.c, off), y = sy(s.r, off);
         const lx = sx(s.lc, off), ly = sy(s.lr, off);
         // forming/breaking link
-        ctx.strokeStyle = rgba(s.color, s.e * 0.4);
-        ctx.lineWidth = 1.4;
+        ctx.strokeStyle = rgba(s.color, s.e * 0.52);
+        ctx.lineWidth = 1.6;
         ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(lx, ly); ctx.stroke();
         // node glow
         const g = ctx.createRadialGradient(x, y, 0, x, y, 9);
@@ -221,9 +221,9 @@ function GridField() {
 
         // fading trail
         for (let k = 1; k < tr.trail.length; k++) {
-          const a = (k / tr.trail.length) * 0.55;
+          const a = (k / tr.trail.length) * 0.72;
           ctx.strokeStyle = rgba(tr.color, a);
-          ctx.lineWidth = 1.6;
+          ctx.lineWidth = 1.9;
           ctx.beginPath();
           ctx.moveTo(sx(tr.trail[k - 1][0], off), sy(tr.trail[k - 1][1], off));
           ctx.lineTo(sx(tr.trail[k][0], off), sy(tr.trail[k][1], off));
