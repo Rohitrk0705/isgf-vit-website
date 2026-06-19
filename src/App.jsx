@@ -71,10 +71,14 @@ const CONTACTS = [
   { name: "Riya Jasmine", phone: "7094729817" },
 ];
 
-const STATS = [
-  { value: 5, suffix: "", label: "Focus domains" },
-  { value: 2, suffix: "", label: "Flagship events" },
-  { value: 20, suffix: "+", label: "Student innovators" },
+/* Hero hub-and-spoke: central ISGF substation → the 5 focus domains as load nodes */
+const HUB = { x: 0.5, y: 0.45 };
+const HUB_NODES = [
+  { key: "grid", label: "Smart Grids", icon: Network, color: "#27D17C", x: 0.155, y: 0.24 },
+  { key: "iot", label: "IoT", icon: Wifi, color: "#38BDF8", x: 0.845, y: 0.24 },
+  { key: "embedded", label: "Embedded", icon: CircuitBoard, color: "#5EEAD4", x: 0.095, y: 0.66 },
+  { key: "automation", label: "Automation", icon: SlidersHorizontal, color: "#38BDF8", x: 0.905, y: 0.66 },
+  { key: "ai", label: "AI / Data", icon: Sparkles, color: "#27D17C", x: 0.5, y: 0.92 },
 ];
 
 /* ── Smart-grid power-distribution background ────────────────────────────────
@@ -94,7 +98,7 @@ function GridCanvas({ opacity = 1, interactive = true, spacing = 116 }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const COLORS = ["#27D17C", "#38BDF8", "#7C83FF"];
+    const COLORS = ["#27D17C", "#38BDF8", "#5EEAD4"];
     let w = 0, h = 0, dpr = 1, raf = 0;
     let nodes = [], edges = [], adj = [], packets = [];
 
@@ -185,7 +189,7 @@ function GridCanvas({ opacity = 1, interactive = true, spacing = 116 }) {
       ctx.lineCap = "round";
       for (const e of edges) {
         const a = nodes[e.a], b = nodes[e.b];
-        ctx.strokeStyle = rgba("#7C83FF", 0.10);
+        ctx.strokeStyle = rgba("#38BDF8", 0.09);
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         if (e.energy > 0.01) {
@@ -396,31 +400,136 @@ function Magnetic({ children, strength = 0.32 }) {
   );
 }
 
-/* ── Count-up number (animates when scrolled into view) ─────────────────── */
-function CountUp({ value, suffix = "", duration = 1400 }) {
-  const ref = useRef(null);
-  const [n, setN] = useState(0);
+/* ── Hero hub-and-spoke graphic ──────────────────────────────────────────────
+   A central ISGF "substation" wired by glowing conduits to the five focus
+   domains. Light packets flow along the conduits (inbound + outbound); hovering
+   a domain node super-charges its line. Canvas draws the conduits + current and
+   the hub glow; the chip and domain cards are real DOM (crisp icons + a11y).
+   ──────────────────────────────────────────────────────────────────────────── */
+function HeroHub() {
+  const wrapRef = useRef(null);
+  const canvasRef = useRef(null);
+  const hoverRef = useRef(-1);
+  const [hover, setHover] = useState(-1);
+  useEffect(() => { hoverRef.current = hover; }, [hover]);
+
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    let raf = 0, started = false;
-    const run = () => {
-      const t0 = performance.now();
-      const tick = (now) => {
-        const p = Math.min(1, (now - t0) / duration);
-        const eased = 1 - Math.pow(1 - p, 3);
-        setN(Math.round(eased * value));
-        if (p < 1) raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
+    const wrap = wrapRef.current, canvas = canvasRef.current;
+    if (!wrap || !canvas) return;
+    const ctx = canvas.getContext("2d");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let w = 0, h = 0, dpr = 1, raf = 0, t0 = performance.now();
+    let conduits = [];
+
+    const rgba = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
     };
-    const io = new IntersectionObserver((ents) => {
-      ents.forEach((e) => { if (e.isIntersecting && !started) { started = true; run(); io.unobserve(el); } });
-    }, { threshold: 0.5 });
-    io.observe(el);
-    return () => { cancelAnimationFrame(raf); io.disconnect(); };
-  }, [value, duration]);
-  return <b ref={ref}>{String(n).padStart(2, "0")}{suffix}</b>;
+    const bez = (p, t) => {
+      const u = 1 - t;
+      return {
+        x: u * u * p.x0 + 2 * u * t * p.cx + t * t * p.x1,
+        y: u * u * p.y0 + 2 * u * t * p.cy + t * t * p.y1,
+      };
+    };
+
+    const build = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = wrap.clientWidth; h = wrap.clientHeight;
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const hub = { x: HUB.x * w, y: HUB.y * h };
+      conduits = HUB_NODES.map((n, i) => {
+        const x1 = n.x * w, y1 = n.y * h;
+        const mx = (hub.x + x1) / 2, my = (hub.y + y1) / 2;
+        const dx = x1 - hub.x, dy = y1 - hub.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const side = i % 2 ? 1 : -1;             // alternate the bow direction
+        const bow = Math.min(60, len * 0.16) * side;
+        return {
+          x0: hub.x, y0: hub.y, x1, y1,
+          cx: mx + (-dy / len) * bow, cy: my + (dx / len) * bow,
+          color: n.color,
+          pulses: Array.from({ length: 3 }, (_, k) => ({
+            t: k / 3, speed: 0.0042 + Math.random() * 0.0026, dir: k % 2 ? 1 : -1,
+          })),
+        };
+      });
+    };
+
+    const frame = (now) => {
+      const tt = (now - t0) / 1000;
+      ctx.clearRect(0, 0, w, h);
+      const hub = { x: HUB.x * w, y: HUB.y * h };
+      const hot = hoverRef.current;
+
+      // conduits (glassy tubes)
+      for (let i = 0; i < conduits.length; i++) {
+        const c = conduits[i];
+        const isHot = hot === i;
+        ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(c.x0, c.y0); ctx.quadraticCurveTo(c.cx, c.cy, c.x1, c.y1);
+        ctx.strokeStyle = rgba(c.color, isHot ? 0.14 : 0.07); ctx.lineWidth = 13; ctx.stroke();
+        ctx.strokeStyle = rgba(c.color, isHot ? 0.30 : 0.16); ctx.lineWidth = 5; ctx.stroke();
+        ctx.strokeStyle = rgba("#9DE7FF", isHot ? 0.5 : 0.16); ctx.lineWidth = 1.2; ctx.stroke();
+
+        // flowing current
+        for (const p of c.pulses) {
+          if (!reduce) p.t += p.speed * (isHot ? 2.1 : 1) * p.dir;
+          if (p.t > 1) p.t -= 1; if (p.t < 0) p.t += 1;
+          const pt = bez(c, p.t);
+          const R = isHot ? 9 : 6.5;
+          const g = ctx.createRadialGradient(pt.x, pt.y, 0, pt.x, pt.y, R);
+          g.addColorStop(0, rgba(c.color, 0.95)); g.addColorStop(1, rgba(c.color, 0));
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pt.x, pt.y, R, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#EAFBFF"; ctx.beginPath(); ctx.arc(pt.x, pt.y, isHot ? 2 : 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      // hub glow
+      const pulse = reduce ? 0.6 : 0.5 + 0.18 * Math.sin(tt * 2);
+      const hg = ctx.createRadialGradient(hub.x, hub.y, 0, hub.x, hub.y, 120);
+      hg.addColorStop(0, rgba("#27D17C", 0.28 * pulse));
+      hg.addColorStop(0.5, rgba("#38BDF8", 0.10 * pulse));
+      hg.addColorStop(1, rgba("#38BDF8", 0));
+      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(hub.x, hub.y, 120, 0, Math.PI * 2); ctx.fill();
+
+      if (!reduce) raf = requestAnimationFrame(frame);
+    };
+
+    build();
+    raf = requestAnimationFrame(frame);
+    const ro = new ResizeObserver(build);
+    ro.observe(wrap);
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+  }, []);
+
+  return (
+    <div className="hub" ref={wrapRef}>
+      <canvas ref={canvasRef} className="hub-canvas" aria-hidden="true" />
+      <div className="hub-core" style={{ left: `${HUB.x * 100}%`, top: `${HUB.y * 100}%` }}>
+        <span className="hub-ring" aria-hidden="true" />
+        <span className="hub-ring hub-ring-2" aria-hidden="true" />
+        <div className="hub-chip"><Zap size={30} strokeWidth={2.4} /></div>
+        <span className="hub-core-tag">ISGF&nbsp;CORE</span>
+      </div>
+      {HUB_NODES.map((n, i) => {
+        const Icon = n.icon;
+        return (
+          <div
+            key={n.key}
+            className={`hub-node ${hover === i ? "is-hot" : ""}`}
+            style={{ left: `${n.x * 100}%`, top: `${n.y * 100}%`, "--c": n.color }}
+            onPointerEnter={() => setHover(i)}
+            onPointerLeave={() => setHover(-1)}
+          >
+            <div className="hub-node-card"><Icon size={22} strokeWidth={1.9} /></div>
+            <span className="hub-node-label">{n.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /* ── Wordmark ───────────────────────────────────────────────────────────── */
@@ -485,7 +594,6 @@ function Nav() {
 function Hero() {
   return (
     <section id="top" className="hero">
-      <GridCanvas spacing={108} />
       <div className="hero-veil" />
       <div className="hero-inner">
         <Reveal className="hero-badge">Powered by the India Smart Grid Forum · VIT Vellore</Reveal>
@@ -504,17 +612,7 @@ function Hero() {
           <Magnetic><a href="#contact" className="btn-primary">Join the chapter <ArrowRight size={17} /></a></Magnetic>
           <Magnetic><a href="#events" className="btn-ghost">Explore events <ArrowUpRight size={16} /></a></Magnetic>
         </Reveal>
-        <Reveal delay={340} className="hero-stats">
-          {STATS.map((s, i) => (
-            <React.Fragment key={s.label}>
-              {i > 0 && <div className="hs-div" />}
-              <div>
-                <CountUp value={s.value} suffix={s.suffix} />
-                <span>{s.label}</span>
-              </div>
-            </React.Fragment>
-          ))}
-        </Reveal>
+        <Reveal delay={320} className="hero-hub-wrap"><HeroHub /></Reveal>
       </div>
       <a href="#about" className="scroll-cue" aria-label="Scroll to about">
         <ChevronDown size={20} />
@@ -745,7 +843,7 @@ function Contact() {
             <a href="mailto:isgf@vit.ac.in" className="contact-line">
               <Mail size={16} /><span>Email<small>isgf@vit.ac.in</small></span>
             </a>
-            <a href="https://instagram.com/isgf_vit" target="_blank" rel="noreferrer" className="contact-line">
+            <a href="https://www.instagram.com/isgf_vit?igsh=cW5qN3lvczdjYXRi" target="_blank" rel="noreferrer" className="contact-line">
               <Instagram size={16} /><span>Instagram<small>@isgf_vit</small></span>
             </a>
           </Reveal>
@@ -773,7 +871,7 @@ function Footer() {
           {NAV.map((n) => <a key={n.id} href={`#${n.id}`}>{n.label}</a>)}
         </nav>
         <div className="footer-social">
-          <a href="https://instagram.com/isgf_vit" target="_blank" rel="noreferrer" aria-label="Instagram"><Instagram size={18} /></a>
+          <a href="https://www.instagram.com/isgf_vit?igsh=cW5qN3lvczdjYXRi" target="_blank" rel="noreferrer" aria-label="Instagram"><Instagram size={18} /></a>
           <a href="mailto:isgf@vit.ac.in" aria-label="Email"><Mail size={18} /></a>
         </div>
       </div>
