@@ -81,6 +81,185 @@ const HUB_NODES = [
   { key: "ai", label: "AI / Data", icon: Sparkles, color: "#27D17C", x: 0.5, y: 0.92 },
 ];
 
+/* ── Global "living grid" background (Tron-Legacy aesthetic) ─────────────────
+   A full-viewport, fixed canvas mounted once behind the whole site. It paints a
+   faint perspective grid whose lines slowly illuminate, sends light-trail
+   "current" travelling along the pathways (turning at junctions like a power
+   route finding its load), and flashes glowing nodes that briefly link to a
+   neighbour and fade — reading as a calm, intelligent power network. It clears
+   to transparent so the page's dark base shows between the lines, a gentle
+   scroll-parallax adds depth, and everything is disabled for reduced-motion.
+   Kept deliberately low-contrast so text readability is never affected.
+   ──────────────────────────────────────────────────────────────────────────── */
+function GridField() {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const COLORS = ["#27D17C", "#38BDF8", "#5EEAD4"]; // green / cyan / teal
+    let w = 0, h = 0, dpr = 1, raf = 0;
+    let sp = 80, cols = 0, rows = 0;           // grid spacing + extent
+    let travelers = [];                        // light-trail "current"
+    let sparks = [];                           // node activations + links
+    let targetScroll = 0, smoothScroll = 0;    // eased scroll for parallax
+
+    const rgba = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+    };
+
+    // A traveller rides grid lines, occasionally turning at a junction.
+    const spawnTraveler = () => {
+      const horiz = Math.random() < 0.5;
+      travelers.push({
+        c: (Math.random() * (cols + 1)) | 0,
+        r: (Math.random() * (rows + 1)) | 0,
+        dx: horiz ? (Math.random() < 0.5 ? 1 : -1) : 0,
+        dy: horiz ? 0 : (Math.random() < 0.5 ? 1 : -1),
+        t: 0,
+        speed: 0.010 + Math.random() * 0.012,
+        color: COLORS[(Math.random() * COLORS.length) | 0],
+        trail: [],
+      });
+    };
+
+    const setup = () => {
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth; h = window.innerHeight;
+      canvas.width = w * dpr; canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      sp = w < 640 ? 54 : 82;
+      cols = Math.ceil(w / sp) + 2;
+      rows = Math.ceil(h / sp) + 2;
+      travelers = []; sparks = [];
+      const count = reduce ? 0 : Math.max(4, Math.min(13, Math.round((w * h) / 100000)));
+      for (let i = 0; i < count; i++) spawnTraveler();
+    };
+
+    // grid → screen coords, with parallax offset applied at draw time
+    const sx = (c, off) => c * sp + off.x;
+    const sy = (r, off) => r * sp + off.y;
+
+    const drawGrid = (off) => {
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = rgba("#38BDF8", 0.05);
+      for (let c = -1; c <= cols; c++) {
+        const x = sx(c, off);
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+      }
+      for (let r = -1; r <= rows; r++) {
+        const y = sy(r, off);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+    };
+
+    const frame = () => {
+      smoothScroll += (targetScroll - smoothScroll) * 0.08;
+      // vertical parallax drift, wrapped to one cell so the grid tiles seamlessly
+      const oy = (((-(smoothScroll * 0.05)) % sp) + sp) % sp - sp;
+      const off = { x: 0, y: oy };
+
+      ctx.clearRect(0, 0, w, h);
+      drawGrid(off);
+
+      // node activations: a junction flares and links to a neighbour, then fades
+      if (!reduce && Math.random() < 0.05) {
+        const c = (Math.random() * (cols + 1)) | 0;
+        const r = (Math.random() * (rows + 1)) | 0;
+        const dir = (Math.random() * 4) | 0;
+        sparks.push({
+          c, r,
+          lc: c + [1, -1, 0, 0][dir], lr: r + [0, 0, 1, -1][dir],
+          e: 1, color: COLORS[(Math.random() * COLORS.length) | 0],
+        });
+      }
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const s = sparks[i];
+        const x = sx(s.c, off), y = sy(s.r, off);
+        const lx = sx(s.lc, off), ly = sy(s.lr, off);
+        // forming/breaking link
+        ctx.strokeStyle = rgba(s.color, s.e * 0.4);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(lx, ly); ctx.stroke();
+        // node glow
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 9);
+        g.addColorStop(0, rgba(s.color, s.e * 0.9));
+        g.addColorStop(1, rgba(s.color, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
+        s.e *= 0.93;
+        if (s.e < 0.03) sparks.splice(i, 1);
+      }
+
+      // travelling current — Tron light-trails routing across the grid
+      for (let i = travelers.length - 1; i >= 0; i--) {
+        const tr = travelers[i];
+        if (!reduce) tr.t += tr.speed;
+        const cc = tr.c + tr.dx * tr.t;
+        const rr = tr.r + tr.dy * tr.t;
+        tr.trail.push([cc, rr]);
+        if (tr.trail.length > 18) tr.trail.shift();
+
+        if (tr.t >= 1) {
+          tr.c += tr.dx; tr.r += tr.dy; tr.t -= 1;
+          // at a junction: usually carry on, sometimes turn 90° (never reverse)
+          if (Math.random() < 0.22) {
+            const left = { dx: tr.dy, dy: -tr.dx };
+            const right = { dx: -tr.dy, dy: tr.dx };
+            const turn = Math.random() < 0.5 ? left : right;
+            tr.dx = turn.dx; tr.dy = turn.dy;
+          }
+          // recycle once it wanders well off-screen
+          if (tr.c < -3 || tr.c > cols + 3 || tr.r < -3 || tr.r > rows + 3) {
+            travelers.splice(i, 1); spawnTraveler(); continue;
+          }
+        }
+
+        // fading trail
+        for (let k = 1; k < tr.trail.length; k++) {
+          const a = (k / tr.trail.length) * 0.55;
+          ctx.strokeStyle = rgba(tr.color, a);
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(sx(tr.trail[k - 1][0], off), sy(tr.trail[k - 1][1], off));
+          ctx.lineTo(sx(tr.trail[k][0], off), sy(tr.trail[k][1], off));
+          ctx.stroke();
+        }
+        // glowing head
+        const hx = sx(cc, off), hy = sy(rr, off);
+        const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, 7);
+        hg.addColorStop(0, rgba(tr.color, 0.95));
+        hg.addColorStop(1, rgba(tr.color, 0));
+        ctx.fillStyle = hg;
+        ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#EAFBFF";
+        ctx.beginPath(); ctx.arc(hx, hy, 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+
+      if (!reduce) raf = requestAnimationFrame(frame);
+    };
+
+    const onScroll = () => { targetScroll = window.scrollY || 0; };
+    const onResize = () => { setup(); };
+
+    setup();
+    frame();                 // reduced-motion draws a single static grid + sparks
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+
+  return <canvas ref={ref} className="site-bg" aria-hidden="true" />;
+}
+
 /* ── Smart-grid power-distribution background ────────────────────────────────
    An orthogonal power network (PCB / city-grid style). Energy packets travel
    along the lines and *route* turn-by-turn through substations — when current
@@ -884,6 +1063,7 @@ function Footer() {
 export default function App() {
   return (
     <div className="isgf-root">
+      <GridField />
       <ScrollProgress />
       <CursorGlow />
       <Nav />

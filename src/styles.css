@@ -12,7 +12,11 @@ body{margin:0;}
   background:var(--ink); color:var(--text);
   font-family:'Inter',system-ui,sans-serif; line-height:1.6;
   overflow-x:hidden;
+  position:relative; z-index:0; isolation:isolate;
 }
+/* global living-grid background — fixed, painted just above the ink base
+   (negative z within the isolated root) so it sits behind ALL content */
+.site-bg{position:fixed;inset:0;width:100%;height:100%;z-index:-1;pointer-events:none;}
 .isgf-root a{color:inherit;text-decoration:none;}
 .isgf-root h1,.isgf-root h2,.isgf-root h3,.isgf-root h4{font-family:'Chakra Petch',sans-serif;line-height:1.08;margin:0;}
 :focus-visible{outline:2px solid var(--cyan);outline-offset:3px;border-radius:4px;}
