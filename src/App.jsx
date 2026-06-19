@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Zap, Network, Wifi, CircuitBoard, SlidersHorizontal, Sparkles,
-  Menu, X, Mail, Phone, Instagram, ArrowRight, ArrowUpRight, Check,
+  Menu, X, Mail, Phone, ArrowRight, ArrowUpRight, Check,
   Trophy, Rocket, Users, ChevronDown, Target,
 } from "lucide-react";
 import "./styles.css";
@@ -1022,9 +1022,6 @@ function Contact() {
             <a href="mailto:isgf@vit.ac.in" className="contact-line">
               <Mail size={16} /><span>Email<small>isgf@vit.ac.in</small></span>
             </a>
-            <a href="https://www.instagram.com/isgf_vit?igsh=cW5qN3lvczdjYXRi" target="_blank" rel="noreferrer" className="contact-line">
-              <Instagram size={16} /><span>Instagram<small>@isgf_vit</small></span>
-            </a>
           </Reveal>
           <Reveal delay={220} className="contact-col">
             <h4>Faculty coordinators</h4>
@@ -1050,7 +1047,6 @@ function Footer() {
           {NAV.map((n) => <a key={n.id} href={`#${n.id}`}>{n.label}</a>)}
         </nav>
         <div className="footer-social">
-          <a href="https://www.instagram.com/isgf_vit?igsh=cW5qN3lvczdjYXRi" target="_blank" rel="noreferrer" aria-label="Instagram"><Instagram size={18} /></a>
           <a href="mailto:isgf@vit.ac.in" aria-label="Email"><Mail size={18} /></a>
         </div>
       </div>
