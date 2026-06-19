@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { animate, stagger, utils } from "animejs";
 import {
   Zap, Network, Wifi, CircuitBoard, SlidersHorizontal, Sparkles,
   Menu, X, Mail, ArrowRight, ArrowUpRight, Check,
@@ -518,6 +519,41 @@ function Reveal({ children, delay = 0, className = "", style = {} }) {
   );
 }
 
+/* ── anime.js staggered reveal ──────────────────────────────────────────────
+   Renders a container and, the first time it scrolls into view, animates its
+   direct children in with a rippling stagger (anime.js v4). The children start
+   hidden (set synchronously to avoid a flash) and ease up into place. Fully
+   skipped for prefers-reduced-motion, where children are simply left visible.
+   ──────────────────────────────────────────────────────────────────────────── */
+function AnimeStagger({ children, className = "", y = 26, step = 70, duration = 720, threshold = 0.15 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const targets = Array.from(el.children);
+    if (!targets.length) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    utils.set(targets, { opacity: 0, translateY: y });
+    const io = new IntersectionObserver((entries, obs) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        animate(targets, {
+          opacity: [0, 1],
+          translateY: [y, 0],
+          duration,
+          delay: stagger(step),
+          ease: "out(3)",
+        });
+        obs.disconnect();
+      });
+    }, { threshold });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return <div ref={ref} className={className}>{children}</div>;
+}
+
 /* ── Tilt + spotlight card (3D hover) ───────────────────────────────────── */
 function TiltCard({ children, className = "", style = {}, max = 8 }) {
   const ref = useRef(null);
@@ -769,25 +805,21 @@ function Hero() {
   return (
     <section id="top" className="hero">
       <div className="hero-veil" />
-      <div className="hero-inner">
-        <Reveal className="hero-badge">Powered by the India Smart Grid Forum · VIT Vellore</Reveal>
-        <Reveal delay={80}>
-          <h1 className="hero-title">
-            We build the <span className="grad-text">grid that thinks.</span>
-          </h1>
-        </Reveal>
-        <Reveal delay={160}>
-          <p className="hero-lede">
-            A student-led technical community turning ideas in smart energy, IoT, embedded
-            systems and AI into things you can actually build, break and ship.
-          </p>
-        </Reveal>
-        <Reveal delay={240} className="hero-cta">
+      <AnimeStagger className="hero-inner" y={24} step={120} duration={780}>
+        <div className="hero-badge">Powered by the India Smart Grid Forum · VIT Vellore</div>
+        <h1 className="hero-title">
+          We build the <span className="grad-text">grid that thinks.</span>
+        </h1>
+        <p className="hero-lede">
+          A student-led technical community turning ideas in smart energy, IoT, embedded
+          systems and AI into things you can actually build, break and ship.
+        </p>
+        <div className="hero-cta">
           <Magnetic><a href="#contact" className="btn-primary">Join the chapter <ArrowRight size={17} /></a></Magnetic>
           <Magnetic><a href="#events" className="btn-ghost">Explore events <ArrowUpRight size={16} /></a></Magnetic>
-        </Reveal>
-        <Reveal delay={320} className="hero-hub-wrap"><HeroHub /></Reveal>
-      </div>
+        </div>
+        <div className="hero-hub-wrap"><HeroHub /></div>
+      </AnimeStagger>
       <a href="#about" className="scroll-cue" aria-label="Scroll to about">
         <ChevronDown size={20} />
       </a>
@@ -835,20 +867,20 @@ function About() {
           </Reveal>
         </div>
 
-        <div className="domain-grid">
-          {DOMAINS.map((d, i) => {
+        <AnimeStagger className="domain-grid" step={80}>
+          {DOMAINS.map((d) => {
             const Icon = d.icon;
             return (
-              <Reveal key={d.title} delay={i * 70}>
+              <div key={d.title} className="domain-cell">
                 <TiltCard className="domain-card">
                   <div className="domain-ico"><Icon size={22} strokeWidth={1.9} /></div>
                   <h3>{d.title}</h3>
                   <p>{d.desc}</p>
                 </TiltCard>
-              </Reveal>
+              </div>
             );
           })}
-        </div>
+        </AnimeStagger>
       </div>
     </section>
   );
@@ -978,16 +1010,14 @@ function Sponsors() {
           </Reveal>
         </div>
 
-        <div className="benefit-grid">
-          {BENEFITS.map((b, i) => (
-            <Reveal key={b} delay={(i % 4) * 50}>
-              <div className="benefit">
-                <span className="benefit-check"><Check size={14} strokeWidth={3} /></span>
-                <span>{b}</span>
-              </div>
-            </Reveal>
+        <AnimeStagger className="benefit-grid" step={45}>
+          {BENEFITS.map((b) => (
+            <div key={b} className="benefit">
+              <span className="benefit-check"><Check size={14} strokeWidth={3} /></span>
+              <span>{b}</span>
+            </div>
           ))}
-        </div>
+        </AnimeStagger>
       </div>
     </section>
   );
