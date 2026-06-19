@@ -77,8 +77,15 @@ const STATS = [
   { value: 20, suffix: "+", label: "Student innovators" },
 ];
 
-/* ── Interactive, cursor-reactive smart-grid background ─────────────────── */
-function GridCanvas({ density = 0.00009, opacity = 1, interactive = true }) {
+/* ── Smart-grid power-distribution background ────────────────────────────────
+   An orthogonal power network (PCB / city-grid style). Energy packets travel
+   along the lines and *route* turn-by-turn through substations — when current
+   passes, the trace lights up and the substation flashes, then both fade. The
+   cursor acts as an energy injector: the nearest substation energises and fires
+   fresh current down its lines. This reads as power flowing through a grid,
+   not a generic particle constellation.
+   ──────────────────────────────────────────────────────────────────────────── */
+function GridCanvas({ opacity = 1, interactive = true, spacing = 116 }) {
   const ref = useRef(null);
   const mouse = useRef({ x: -9999, y: -9999, active: false });
 
@@ -87,37 +94,66 @@ function GridCanvas({ density = 0.00009, opacity = 1, interactive = true }) {
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const colors = ["#27D17C", "#38BDF8", "#7C83FF"];
-    let w = 0, h = 0, dpr = 1, nodes = [], edges = [], pulses = [], raf = 0;
+    const COLORS = ["#27D17C", "#38BDF8", "#7C83FF"];
+    let w = 0, h = 0, dpr = 1, raf = 0;
+    let nodes = [], edges = [], adj = [], packets = [];
 
-    const newPulse = () => {
-      const e = edges[Math.floor(Math.random() * edges.length)];
-      return { e, t: Math.random(), speed: 0.0025 + Math.random() * 0.004 };
+    const rgba = (hex, a) => {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
     };
-    const computeEdges = () => {
-      edges = [];
-      const maxD = Math.min(w, h) < 640 ? 120 : 165;
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
-          const d = Math.hypot(dx, dy);
-          if (d < maxD) edges.push({ a: i, b: j, d });
+
+    // Spawn an energy packet at a node, heading down one of its lines.
+    const spawnFrom = (ni, color) => {
+      const links = adj[ni];
+      if (!links || !links.length) return;
+      const lk = links[(Math.random() * links.length) | 0];
+      packets.push({
+        edge: lk.edge, from: ni, to: lk.other, t: 0,
+        speed: 0.012 + Math.random() * 0.014, life: 5 + (Math.random() * 4 | 0),
+        color: color || COLORS[(Math.random() * COLORS.length) | 0],
+      });
+    };
+
+    const build = () => {
+      const sp = Math.max(78, Math.min(spacing, Math.min(w, h) < 620 ? 84 : spacing));
+      const cols = Math.max(3, Math.round(w / sp) + 1);
+      const rows = Math.max(3, Math.round(h / sp) + 1);
+      const ox = (w - (cols - 1) * sp) / 2;
+      const oy = (h - (rows - 1) * sp) / 2;
+      nodes = []; edges = []; adj = []; packets = [];
+
+      const idx = (c, r) => r * cols + c;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const j = sp * 0.18;
+          nodes.push({
+            x: ox + c * sp + (Math.random() - 0.5) * j,
+            y: oy + r * sp + (Math.random() - 0.5) * j,
+            hub: Math.random() < 0.12,          // a few bigger substations
+            energy: 0, phase: Math.random() * Math.PI * 2,
+            c: COLORS[(Math.random() * COLORS.length) | 0],
+          });
         }
       }
+      adj = nodes.map(() => []);
+      const addEdge = (a, b) => {
+        if (Math.random() < 0.26) return;       // drop some lines → irregular grid
+        const ei = edges.length;
+        edges.push({ a, b, energy: 0 });
+        adj[a].push({ edge: ei, other: b });
+        adj[b].push({ edge: ei, other: a });
+      };
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (c < cols - 1) addEdge(idx(c, r), idx(c + 1, r)); // horizontal line
+          if (r < rows - 1) addEdge(idx(c, r), idx(c, r + 1)); // vertical line
+        }
+      }
+      const seed = reduce ? 0 : Math.max(6, Math.min(26, Math.round(edges.length * 0.08)));
+      for (let i = 0; i < seed; i++) spawnFrom((Math.random() * nodes.length) | 0);
     };
-    const build = () => {
-      const count = Math.max(16, Math.min(72, Math.floor(w * h * density)));
-      nodes = Array.from({ length: count }, () => ({
-        x: Math.random() * w, y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.11, vy: (Math.random() - 0.5) * 0.11,
-        r: Math.random() * 1.5 + 1, c: colors[Math.floor(Math.random() * colors.length)],
-        tw: Math.random() * Math.PI * 2,
-      }));
-      computeEdges();
-      pulses = [];
-      const pc = reduce ? 0 : Math.min(18, Math.floor(edges.length * 0.22));
-      for (let i = 0; i < pc; i++) pulses.push(newPulse());
-    };
+
     const resize = () => {
       dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = canvas.clientWidth; h = canvas.clientHeight;
@@ -125,67 +161,100 @@ function GridCanvas({ density = 0.00009, opacity = 1, interactive = true }) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       build();
     };
+
+    let inject = 0; // throttle cursor injections
     const frame = () => {
       ctx.clearRect(0, 0, w, h);
       const m = mouse.current;
-      const R = 150; // cursor influence radius
-      if (!reduce) {
-        for (const n of nodes) {
-          // gentle attraction toward the cursor
-          if (interactive && m.active) {
-            const dx = m.x - n.x, dy = m.y - n.y;
-            const d = Math.hypot(dx, dy);
-            if (d < R && d > 0.5) {
-              const f = (1 - d / R) * 0.16;
-              n.vx += (dx / d) * f;
-              n.vy += (dy / d) * f;
-            }
-          }
-          n.vx *= 0.96; n.vy *= 0.96; // damping so it settles
-          n.x += n.vx; n.y += n.vy; n.tw += 0.02;
-          if (n.x < 0 || n.x > w) n.vx *= -1;
-          if (n.y < 0 || n.y > h) n.vy *= -1;
+
+      // cursor energises the nearest substation and fires current from it
+      if (interactive && m.active && !reduce) {
+        let best = -1, bd = 130 * 130;
+        for (let i = 0; i < nodes.length; i++) {
+          const dx = nodes[i].x - m.x, dy = nodes[i].y - m.y;
+          const d = dx * dx + dy * dy;
+          if (d < bd) { bd = d; best = i; }
         }
-        computeEdges();
+        if (best >= 0) {
+          nodes[best].energy = 1;
+          if (--inject <= 0) { spawnFrom(best, nodes[best].c); inject = 8; }
+        }
       }
+
+      // base traces + energised glow
+      ctx.lineCap = "round";
       for (const e of edges) {
         const a = nodes[e.a], b = nodes[e.b];
-        const alpha = Math.max(0, (1 - e.d / 175)) * 0.32;
-        ctx.strokeStyle = `rgba(124,131,255,${alpha})`;
+        ctx.strokeStyle = rgba("#7C83FF", 0.10);
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      }
-      // glow links from cursor to nearby nodes
-      if (interactive && m.active && !reduce) {
-        for (const n of nodes) {
-          const d = Math.hypot(m.x - n.x, m.y - n.y);
-          if (d < R) {
-            const alpha = (1 - d / R) * 0.5;
-            ctx.strokeStyle = `rgba(56,189,248,${alpha})`;
-            ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(n.x, n.y); ctx.stroke();
-          }
+        if (e.energy > 0.01) {
+          ctx.strokeStyle = rgba("#38BDF8", e.energy * 0.55);
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          e.energy *= 0.94;
         }
       }
-      for (const p of pulses) {
-        if (!p.e || !nodes[p.e.a] || !nodes[p.e.b]) { Object.assign(p, newPulse()); continue; }
-        const a = nodes[p.e.a], b = nodes[p.e.b];
-        const x = a.x + (b.x - a.x) * p.t, y = a.y + (b.y - a.y) * p.t;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 5.5);
-        g.addColorStop(0, a.c); g.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 5.5, 0, Math.PI * 2); ctx.fill();
-        p.t += p.speed;
-        if (p.t > 1) Object.assign(p, newPulse());
+
+      // energy packets routing through the grid
+      for (let i = packets.length - 1; i >= 0; i--) {
+        const p = packets[i];
+        const e = edges[p.edge];
+        if (!e) { packets.splice(i, 1); continue; }
+        const a = nodes[p.from], b = nodes[p.to];
+        e.energy = 1;
+        const x = a.x + (b.x - a.x) * p.t;
+        const y = a.y + (b.y - a.y) * p.t;
+        if (!reduce) p.t += p.speed;
+
+        // glowing current head
+        const g = ctx.createRadialGradient(x, y, 0, x, y, 7);
+        g.addColorStop(0, p.color); g.addColorStop(1, rgba(p.color, 0));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, 1.7, 0, Math.PI * 2); ctx.fill();
+
+        if (p.t >= 1) {
+          // arrived at a substation → flash it, then route onward
+          nodes[p.to].energy = 1;
+          if (--p.life <= 0) { packets.splice(i, 1); continue; }
+          const links = adj[p.to].filter((l) => l.other !== p.from);
+          const pick = (links.length ? links : adj[p.to])[
+            (Math.random() * (links.length ? links.length : adj[p.to].length)) | 0
+          ];
+          if (!pick) { packets.splice(i, 1); continue; }
+          p.from = p.to; p.to = pick.other; p.edge = pick.edge; p.t = 0;
+        }
       }
+
+      // keep a steady population of current flowing
+      if (!reduce && packets.length < Math.max(6, edges.length * 0.05) && Math.random() < 0.08) {
+        spawnFrom((Math.random() * nodes.length) | 0);
+      }
+
+      // substations
       for (const n of nodes) {
-        const tw = reduce ? 1 : 0.6 + 0.4 * Math.sin(n.tw);
-        ctx.fillStyle = n.c;
-        ctx.globalAlpha = 0.85 * tw;
-        ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 0.16 * tw;
-        ctx.beginPath(); ctx.arc(n.x, n.y, n.r * 3.4, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
+        n.phase += 0.02;
+        const idle = reduce ? 0.5 : 0.4 + 0.25 * Math.sin(n.phase);
+        const lvl = Math.max(idle * 0.5, n.energy);
+        const base = n.hub ? 2.4 : 1.5;
+        if (n.energy > 0.02) {
+          ctx.fillStyle = rgba(n.c, n.energy * 0.22);
+          ctx.beginPath(); ctx.arc(n.x, n.y, base + 9 * n.energy, 0, Math.PI * 2); ctx.fill();
+          n.energy *= 0.93;
+        }
+        // hubs drawn as small squares (substations), others as dots
+        ctx.fillStyle = rgba(n.c, 0.55 + 0.45 * lvl);
+        if (n.hub) {
+          const s = base;
+          ctx.fillRect(n.x - s, n.y - s, s * 2, s * 2);
+          ctx.strokeStyle = rgba(n.c, 0.5 * lvl + 0.2);
+          ctx.lineWidth = 1;
+          ctx.strokeRect(n.x - s - 2.5, n.y - s - 2.5, (s + 2.5) * 2, (s + 2.5) * 2);
+        } else {
+          ctx.beginPath(); ctx.arc(n.x, n.y, base, 0, Math.PI * 2); ctx.fill();
+        }
       }
+
       if (!reduce) raf = requestAnimationFrame(frame);
     };
 
@@ -208,7 +277,7 @@ function GridCanvas({ density = 0.00009, opacity = 1, interactive = true }) {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerleave", onLeave);
     };
-  }, [density, interactive]);
+  }, [interactive, spacing]);
 
   return <canvas ref={ref} aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity }} />;
 }
@@ -416,7 +485,7 @@ function Nav() {
 function Hero() {
   return (
     <section id="top" className="hero">
-      <GridCanvas density={0.00011} />
+      <GridCanvas spacing={108} />
       <div className="hero-veil" />
       <div className="hero-inner">
         <Reveal className="hero-badge">Powered by the India Smart Grid Forum · VIT Vellore</Reveal>
@@ -656,7 +725,7 @@ function Sponsors() {
 function Contact() {
   return (
     <section id="contact" className="section contact">
-      <GridCanvas density={0.00006} opacity={0.5} />
+      <GridCanvas spacing={140} opacity={0.55} />
       <div className="contact-veil" />
       <div className="wrap contact-inner">
         <Reveal><Eyebrow>Get in touch</Eyebrow></Reveal>
