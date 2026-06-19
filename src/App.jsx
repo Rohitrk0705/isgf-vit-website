@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Zap, Network, Wifi, CircuitBoard, SlidersHorizontal, Sparkles,
-  Menu, X, Mail, Phone, ArrowRight, ArrowUpRight, Check,
+  Menu, X, Mail, ArrowRight, ArrowUpRight, Check,
   Trophy, Rocket, Users, ChevronDown, Target,
 } from "lucide-react";
 import "./styles.css";
@@ -64,11 +64,6 @@ const BENEFITS = [
   "Keynote / industry talk opportunity",
   "Brand presence on event stage screens",
   "Judge / panel member opportunity",
-];
-
-const CONTACTS = [
-  { name: "Santhoshraja", phone: "8870257778" },
-  { name: "Riya Jasmine", phone: "7094729817" },
 ];
 
 /* Hero hub-and-spoke: central ISGF substation → the 5 focus domains as load nodes */
@@ -1010,14 +1005,6 @@ function Contact() {
 
         <div className="contact-grid">
           <Reveal delay={100} className="contact-col">
-            <h4>Call us</h4>
-            {CONTACTS.map((c) => (
-              <a key={c.phone} href={`tel:+91${c.phone}`} className="contact-line">
-                <Phone size={16} /><span>{c.name}<small>+91 {c.phone}</small></span>
-              </a>
-            ))}
-          </Reveal>
-          <Reveal delay={160} className="contact-col">
             <h4>Online</h4>
             <a href="mailto:isgf@vit.ac.in" className="contact-line">
               <Mail size={16} /><span>Email<small>isgf@vit.ac.in</small></span>
