@@ -1,11 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
-import { animate, stagger, utils } from "animejs";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { stagger, utils, createTimeline } from "animejs";
+import { gsap } from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Lenis from "lenis";
+
+gsap.registerPlugin(ScrollTrigger);
 import {
   Zap, Network, Wifi, CircuitBoard, SlidersHorizontal, Sparkles,
   Menu, X, Mail, ArrowRight, ArrowUpRight, Check,
-  Trophy, Rocket, Users, ChevronDown, Target,
+  Trophy, Rocket, Users, ChevronDown, ChevronLeft, ChevronRight, Target, Instagram,
 } from "lucide-react";
 import "./styles.css";
+import HeroGridBackground from "./HeroGridBackground";
+import Loader from "./components/Loader";
 
 /* ────────────────────────────────────────────────────────────────────────
    ISGF — India Smart Grid Forum · VIT Vellore Student Chapter
@@ -33,22 +40,66 @@ const DOMAINS = [
 
 const EVENTS = [
   {
-    tag: "Flagship Competition",
+    type: "image",
+    image: "events/event1.jpeg",
+    tag: "Interactive Industry Session",
+    name: "Entrepreneurship Beyond Hype",
+    motto: "Building Sustainable Ventures Beyond Trends",
+    accent: "#7C83FF",
+    desc: "An interactive industry session with Keerthana Vayyasi, CEO of Sail Analytics and VIT alumna, on building ventures that outlast the hype cycle. The conversation went deep on the rise of AI across the electrical engineering domain — where it's reshaping the field, and how students should actually approach learning and applying it. Beyond startup theory, attendees walked away with grounded insight on turning emerging tech into durable, real-world ventures.",
+    chips: ["Entrepreneurship", "AI in Electrical", "Sustainable Ventures", "Industry Talk", "Alumna Speaker"],
+  },
+  {
+    type: "image",
+    image: "events/event2.jpeg",
+    tag: "Industry Academia Conclave · IAC '26",
+    name: "Industry Academia Conclave",
+    motto: "Crafting The Future With Technology",
+    accent: "#38BDF8",
+    desc: "IAC '26, hosted by VIT's School of Electrical Engineering, brought students, researchers and industry leaders together to explore the future of electrical engineering. Across six technical tracks — AI & ML, E-Mobility & Smart Grid, Drone Tech, Healthcare, Industry 4.0 and Quantum Computing — the two-day conclave ran expert sessions, product showcases and panel discussions, powered by Bosch, British Council, Fluke and Edutech.",
+    chips: ["AI & ML", "Smart Grid", "Quantum Computing", "Industry 4.0", "Expert Sessions"],
+  },
+  {
+    type: "image",
+    image: "events/event3.jpeg",
+    tag: "Interactive Session",
+    name: "Powering A Sustainable Future",
+    motto: "The Energy Efficiency Perspective",
+    accent: "#27D17C",
+    desc: "An interactive guest lecture by Dr. Palanisamy K, Deputy Director of Electrical Maintenance & New Projects at VIT Vellore, on building a sustainable campus. The session introduced the core principles of sustainable campus development, with a focus on energy auditing, energy efficiency and smart resource management — connecting smart-grid thinking directly to how a real campus is powered and run.",
+    chips: ["Energy Efficiency", "Energy Auditing", "Sustainable Campus", "Resource Management", "Guest Lecture"],
+  },
+  {
+    type: "image",
+    image: "events/event4.jpeg",
+    tag: "Challenge Event",
+    name: "Electro Escape Room",
+    motto: "Decode · Solve · Escape",
+    accent: "#22F58B",
+    desc: "A fully online challenge event from ISGF VIT Vellore that turns electrical and logic puzzles into a race against the clock. Teams worked through Morse code, binary, QR hunts, circuit breaches and hidden clues — decoding, solving and escaping before time ran out. A fast, high-energy test of problem-solving, pattern recognition and engineering instinct, run entirely through an interactive online setup.",
+    chips: ["Puzzles", "Morse & Binary", "Cryptography", "QR Hunt", "Online"],
+  },
+  {
+    type: "icon",
+    icon: Trophy,
+    tag: "Electronics & IoT",
     name: "Hunt Verse",
     motto: "Explore · Innovate · Conquer",
     accent: "#27D17C",
     desc: "An immersive electronics and IoT competition that drops students into the world of connected systems through hands-on innovation and competitive gameplay. Teams explore wireless communication, embedded development and smart systems while solving challenges that reward creativity and engineering thinking.",
     chips: ["Electronics", "IoT", "Embedded", "Wireless", "Team-based"],
-    icon: Trophy,
+    upcoming: true,
   },
   {
+    type: "icon",
+    icon: Rocket,
     tag: "AI Hackathon · graVITas '26",
     name: "Operation: Doomsday",
     motto: "Assemble · Code · Defy Doom",
     accent: "#38BDF8",
     desc: "A one-day AI engineering hackathon set in a multiversal crisis. Participants combat an AI-powered threat across missions spanning competitive coding, AI literacy, deepfake detection, modern AI tooling and agentic AI — building solutions for real-world sustainability across smart grids, renewable energy, electric mobility and smart cities.",
     chips: ["AI / ML", "Agentic AI", "Deepfake Detection", "Sustainability", "Hackathon"],
-    icon: Rocket,
+    upcoming: true,
   },
 ];
 
@@ -76,390 +127,6 @@ const HUB_NODES = [
   { key: "automation", label: "Automation", icon: SlidersHorizontal, color: "#38BDF8", x: 0.905, y: 0.66 },
   { key: "ai", label: "AI / Data", icon: Sparkles, color: "#27D17C", x: 0.5, y: 0.92 },
 ];
-
-/* ── Global "living grid" background (Tron-Legacy aesthetic) ─────────────────
-   A full-viewport, fixed canvas mounted once behind the whole site. It paints a
-   faint perspective grid whose lines slowly illuminate, sends light-trail
-   "current" travelling along the pathways (turning at junctions like a power
-   route finding its load), and flashes glowing nodes that briefly link to a
-   neighbour and fade — reading as a calm, intelligent power network. It clears
-   to transparent so the page's dark base shows between the lines, a gentle
-   scroll-parallax adds depth, and everything is disabled for reduced-motion.
-   Kept deliberately low-contrast so text readability is never affected.
-   ──────────────────────────────────────────────────────────────────────────── */
-function GridField() {
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    const COLORS = ["#27D17C", "#38BDF8", "#5EEAD4"]; // green / cyan / teal
-    let w = 0, h = 0, dpr = 1, raf = 0;
-    let sp = 80, cols = 0, rows = 0;           // grid spacing + extent
-    let travelers = [];                        // light-trail "current"
-    let sparks = [];                           // node activations + links
-    let targetScroll = 0, smoothScroll = 0;    // eased scroll for parallax
-
-    const rgba = (hex, a) => {
-      const n = parseInt(hex.slice(1), 16);
-      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-    };
-
-    // A traveller rides grid lines, occasionally turning at a junction.
-    const spawnTraveler = () => {
-      const horiz = Math.random() < 0.5;
-      travelers.push({
-        c: (Math.random() * (cols + 1)) | 0,
-        r: (Math.random() * (rows + 1)) | 0,
-        dx: horiz ? (Math.random() < 0.5 ? 1 : -1) : 0,
-        dy: horiz ? 0 : (Math.random() < 0.5 ? 1 : -1),
-        t: 0,
-        speed: 0.014 + Math.random() * 0.016,
-        color: COLORS[(Math.random() * COLORS.length) | 0],
-        trail: [],
-      });
-    };
-
-    const setup = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = window.innerWidth; h = window.innerHeight;
-      canvas.width = w * dpr; canvas.height = h * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      sp = w < 640 ? 54 : 82;
-      cols = Math.ceil(w / sp) + 2;
-      rows = Math.ceil(h / sp) + 2;
-      travelers = []; sparks = [];
-      const count = reduce ? 0 : Math.max(4, Math.min(13, Math.round((w * h) / 100000)));
-      for (let i = 0; i < count; i++) spawnTraveler();
-    };
-
-    // grid → screen coords, with parallax offset applied at draw time
-    const sx = (c, off) => c * sp + off.x;
-    const sy = (r, off) => r * sp + off.y;
-
-    const drawGrid = (off) => {
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = rgba("#38BDF8", 0.066);
-      for (let c = -1; c <= cols; c++) {
-        const x = sx(c, off);
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-      }
-      for (let r = -1; r <= rows; r++) {
-        const y = sy(r, off);
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-      }
-    };
-
-    const frame = () => {
-      smoothScroll += (targetScroll - smoothScroll) * 0.08;
-      // vertical parallax drift, wrapped to one cell so the grid tiles seamlessly
-      const oy = (((-(smoothScroll * 0.05)) % sp) + sp) % sp - sp;
-      const off = { x: 0, y: oy };
-
-      ctx.clearRect(0, 0, w, h);
-      drawGrid(off);
-
-      // node activations: a junction flares and links to a neighbour, then fades
-      if (!reduce && Math.random() < 0.05) {
-        const c = (Math.random() * (cols + 1)) | 0;
-        const r = (Math.random() * (rows + 1)) | 0;
-        const dir = (Math.random() * 4) | 0;
-        sparks.push({
-          c, r,
-          lc: c + [1, -1, 0, 0][dir], lr: r + [0, 0, 1, -1][dir],
-          e: 1, color: COLORS[(Math.random() * COLORS.length) | 0],
-        });
-      }
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const s = sparks[i];
-        const x = sx(s.c, off), y = sy(s.r, off);
-        const lx = sx(s.lc, off), ly = sy(s.lr, off);
-        // forming/breaking link
-        ctx.strokeStyle = rgba(s.color, s.e * 0.52);
-        ctx.lineWidth = 1.6;
-        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(lx, ly); ctx.stroke();
-        // node glow
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 9);
-        g.addColorStop(0, rgba(s.color, s.e * 0.9));
-        g.addColorStop(1, rgba(s.color, 0));
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
-        s.e *= 0.93;
-        if (s.e < 0.03) sparks.splice(i, 1);
-      }
-
-      // travelling current — Tron light-trails routing across the grid
-      for (let i = travelers.length - 1; i >= 0; i--) {
-        const tr = travelers[i];
-        if (!reduce) tr.t += tr.speed;
-        const cc = tr.c + tr.dx * tr.t;
-        const rr = tr.r + tr.dy * tr.t;
-        tr.trail.push([cc, rr]);
-        if (tr.trail.length > 18) tr.trail.shift();
-
-        if (tr.t >= 1) {
-          tr.c += tr.dx; tr.r += tr.dy; tr.t -= 1;
-          // at a junction: usually carry on, sometimes turn 90° (never reverse)
-          if (Math.random() < 0.22) {
-            const left = { dx: tr.dy, dy: -tr.dx };
-            const right = { dx: -tr.dy, dy: tr.dx };
-            const turn = Math.random() < 0.5 ? left : right;
-            tr.dx = turn.dx; tr.dy = turn.dy;
-          }
-          // recycle once it wanders well off-screen
-          if (tr.c < -3 || tr.c > cols + 3 || tr.r < -3 || tr.r > rows + 3) {
-            travelers.splice(i, 1); spawnTraveler(); continue;
-          }
-        }
-
-        // fading trail
-        for (let k = 1; k < tr.trail.length; k++) {
-          const a = (k / tr.trail.length) * 0.72;
-          ctx.strokeStyle = rgba(tr.color, a);
-          ctx.lineWidth = 1.9;
-          ctx.beginPath();
-          ctx.moveTo(sx(tr.trail[k - 1][0], off), sy(tr.trail[k - 1][1], off));
-          ctx.lineTo(sx(tr.trail[k][0], off), sy(tr.trail[k][1], off));
-          ctx.stroke();
-        }
-        // glowing head
-        const hx = sx(cc, off), hy = sy(rr, off);
-        const hg = ctx.createRadialGradient(hx, hy, 0, hx, hy, 7);
-        hg.addColorStop(0, rgba(tr.color, 0.95));
-        hg.addColorStop(1, rgba(tr.color, 0));
-        ctx.fillStyle = hg;
-        ctx.beginPath(); ctx.arc(hx, hy, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#EAFBFF";
-        ctx.beginPath(); ctx.arc(hx, hy, 1.5, 0, Math.PI * 2); ctx.fill();
-      }
-
-      if (!reduce) raf = requestAnimationFrame(frame);
-    };
-
-    const onScroll = () => { targetScroll = window.scrollY || 0; };
-    const onResize = () => { setup(); };
-
-    setup();
-    frame();                 // reduced-motion draws a single static grid + sparks
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
-    };
-  }, []);
-
-  return <canvas ref={ref} className="site-bg" aria-hidden="true" />;
-}
-
-/* ── Smart-grid power-distribution background ────────────────────────────────
-   An orthogonal power network (PCB / city-grid style). Energy packets travel
-   along the lines and *route* turn-by-turn through substations — when current
-   passes, the trace lights up and the substation flashes, then both fade. The
-   cursor acts as an energy injector: the nearest substation energises and fires
-   fresh current down its lines. This reads as power flowing through a grid,
-   not a generic particle constellation.
-   ──────────────────────────────────────────────────────────────────────────── */
-function GridCanvas({ opacity = 1, interactive = true, spacing = 116 }) {
-  const ref = useRef(null);
-  const mouse = useRef({ x: -9999, y: -9999, active: false });
-
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const COLORS = ["#27D17C", "#38BDF8", "#5EEAD4"];
-    let w = 0, h = 0, dpr = 1, raf = 0;
-    let nodes = [], edges = [], adj = [], packets = [];
-
-    const rgba = (hex, a) => {
-      const n = parseInt(hex.slice(1), 16);
-      return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-    };
-
-    // Spawn an energy packet at a node, heading down one of its lines.
-    const spawnFrom = (ni, color) => {
-      const links = adj[ni];
-      if (!links || !links.length) return;
-      const lk = links[(Math.random() * links.length) | 0];
-      packets.push({
-        edge: lk.edge, from: ni, to: lk.other, t: 0,
-        speed: 0.012 + Math.random() * 0.014, life: 5 + (Math.random() * 4 | 0),
-        color: color || COLORS[(Math.random() * COLORS.length) | 0],
-      });
-    };
-
-    const build = () => {
-      const sp = Math.max(78, Math.min(spacing, Math.min(w, h) < 620 ? 84 : spacing));
-      const cols = Math.max(3, Math.round(w / sp) + 1);
-      const rows = Math.max(3, Math.round(h / sp) + 1);
-      const ox = (w - (cols - 1) * sp) / 2;
-      const oy = (h - (rows - 1) * sp) / 2;
-      nodes = []; edges = []; adj = []; packets = [];
-
-      const idx = (c, r) => r * cols + c;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const j = sp * 0.18;
-          nodes.push({
-            x: ox + c * sp + (Math.random() - 0.5) * j,
-            y: oy + r * sp + (Math.random() - 0.5) * j,
-            hub: Math.random() < 0.12,          // a few bigger substations
-            energy: 0, phase: Math.random() * Math.PI * 2,
-            c: COLORS[(Math.random() * COLORS.length) | 0],
-          });
-        }
-      }
-      adj = nodes.map(() => []);
-      const addEdge = (a, b) => {
-        if (Math.random() < 0.26) return;       // drop some lines → irregular grid
-        const ei = edges.length;
-        edges.push({ a, b, energy: 0 });
-        adj[a].push({ edge: ei, other: b });
-        adj[b].push({ edge: ei, other: a });
-      };
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (c < cols - 1) addEdge(idx(c, r), idx(c + 1, r)); // horizontal line
-          if (r < rows - 1) addEdge(idx(c, r), idx(c, r + 1)); // vertical line
-        }
-      }
-      const seed = reduce ? 0 : Math.max(6, Math.min(26, Math.round(edges.length * 0.08)));
-      for (let i = 0; i < seed; i++) spawnFrom((Math.random() * nodes.length) | 0);
-    };
-
-    const resize = () => {
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = canvas.clientWidth; h = canvas.clientHeight;
-      canvas.width = w * dpr; canvas.height = h * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      build();
-    };
-
-    let inject = 0; // throttle cursor injections
-    const frame = () => {
-      ctx.clearRect(0, 0, w, h);
-      const m = mouse.current;
-
-      // cursor energises the nearest substation and fires current from it
-      if (interactive && m.active && !reduce) {
-        let best = -1, bd = 130 * 130;
-        for (let i = 0; i < nodes.length; i++) {
-          const dx = nodes[i].x - m.x, dy = nodes[i].y - m.y;
-          const d = dx * dx + dy * dy;
-          if (d < bd) { bd = d; best = i; }
-        }
-        if (best >= 0) {
-          nodes[best].energy = 1;
-          if (--inject <= 0) { spawnFrom(best, nodes[best].c); inject = 8; }
-        }
-      }
-
-      // base traces + energised glow
-      ctx.lineCap = "round";
-      for (const e of edges) {
-        const a = nodes[e.a], b = nodes[e.b];
-        ctx.strokeStyle = rgba("#38BDF8", 0.09);
-        ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-        if (e.energy > 0.01) {
-          ctx.strokeStyle = rgba("#38BDF8", e.energy * 0.55);
-          ctx.lineWidth = 1.6;
-          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-          e.energy *= 0.94;
-        }
-      }
-
-      // energy packets routing through the grid
-      for (let i = packets.length - 1; i >= 0; i--) {
-        const p = packets[i];
-        const e = edges[p.edge];
-        if (!e) { packets.splice(i, 1); continue; }
-        const a = nodes[p.from], b = nodes[p.to];
-        e.energy = 1;
-        const x = a.x + (b.x - a.x) * p.t;
-        const y = a.y + (b.y - a.y) * p.t;
-        if (!reduce) p.t += p.speed;
-
-        // glowing current head
-        const g = ctx.createRadialGradient(x, y, 0, x, y, 7);
-        g.addColorStop(0, p.color); g.addColorStop(1, rgba(p.color, 0));
-        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(x, y, 1.7, 0, Math.PI * 2); ctx.fill();
-
-        if (p.t >= 1) {
-          // arrived at a substation → flash it, then route onward
-          nodes[p.to].energy = 1;
-          if (--p.life <= 0) { packets.splice(i, 1); continue; }
-          const links = adj[p.to].filter((l) => l.other !== p.from);
-          const pick = (links.length ? links : adj[p.to])[
-            (Math.random() * (links.length ? links.length : adj[p.to].length)) | 0
-          ];
-          if (!pick) { packets.splice(i, 1); continue; }
-          p.from = p.to; p.to = pick.other; p.edge = pick.edge; p.t = 0;
-        }
-      }
-
-      // keep a steady population of current flowing
-      if (!reduce && packets.length < Math.max(6, edges.length * 0.05) && Math.random() < 0.08) {
-        spawnFrom((Math.random() * nodes.length) | 0);
-      }
-
-      // substations
-      for (const n of nodes) {
-        n.phase += 0.02;
-        const idle = reduce ? 0.5 : 0.4 + 0.25 * Math.sin(n.phase);
-        const lvl = Math.max(idle * 0.5, n.energy);
-        const base = n.hub ? 2.4 : 1.5;
-        if (n.energy > 0.02) {
-          ctx.fillStyle = rgba(n.c, n.energy * 0.22);
-          ctx.beginPath(); ctx.arc(n.x, n.y, base + 9 * n.energy, 0, Math.PI * 2); ctx.fill();
-          n.energy *= 0.93;
-        }
-        // hubs drawn as small squares (substations), others as dots
-        ctx.fillStyle = rgba(n.c, 0.55 + 0.45 * lvl);
-        if (n.hub) {
-          const s = base;
-          ctx.fillRect(n.x - s, n.y - s, s * 2, s * 2);
-          ctx.strokeStyle = rgba(n.c, 0.5 * lvl + 0.2);
-          ctx.lineWidth = 1;
-          ctx.strokeRect(n.x - s - 2.5, n.y - s - 2.5, (s + 2.5) * 2, (s + 2.5) * 2);
-        } else {
-          ctx.beginPath(); ctx.arc(n.x, n.y, base, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-
-      if (!reduce) raf = requestAnimationFrame(frame);
-    };
-
-    const onMove = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.current = { x: e.clientX - rect.left, y: e.clientY - rect.top, active: true };
-    };
-    const onLeave = () => { mouse.current.active = false; };
-
-    resize();
-    frame();
-    window.addEventListener("resize", resize);
-    if (interactive) {
-      window.addEventListener("pointermove", onMove, { passive: true });
-      window.addEventListener("pointerleave", onLeave);
-    }
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerleave", onLeave);
-    };
-  }, [interactive, spacing]);
-
-  return <canvas ref={ref} aria-hidden="true" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity }} />;
-}
 
 /* ── Custom cursor glow ─────────────────────────────────────────────────── */
 function CursorGlow() {
@@ -519,11 +186,47 @@ function Reveal({ children, delay = 0, className = "", style = {} }) {
   );
 }
 
-/* ── anime.js staggered reveal ──────────────────────────────────────────────
+/* ── Hero intro — cinematic timeline on page load ───────────────────────────
+   Badge drops in from above, title words stagger up, lede and CTA fade in,
+   hub rises last. All driven by a single createTimeline sequence so each
+   element starts at a precise absolute offset (ms from page load).
+   ──────────────────────────────────────────────────────────────────────────── */
+function HeroIntro({ children }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const badge = el.querySelector(".hero-badge");
+    const words = el.querySelectorAll(".hero-word");
+    const lede  = el.querySelector(".hero-lede");
+    const cta   = el.querySelector(".hero-cta");
+    const hub   = el.querySelector(".hero-hub-wrap");
+
+    utils.set(badge, { opacity: 0, translateY: -28 });
+    utils.set(words, { opacity: 0, translateY: 60 });
+    utils.set(lede,  { opacity: 0, translateY: 28 });
+    utils.set(cta,   { opacity: 0, translateY: 26 });
+    utils.set(hub,   { opacity: 0, translateY: 52, scale: 0.96 });
+
+    const tl = createTimeline();
+    tl
+      .add(badge, { opacity: [0, 1], translateY: [-28, 0], duration: 640, ease: "out(4)" }, 0)
+      .add(words, { opacity: [0, 1], translateY: [60, 0],  duration: 860, delay: stagger(115), ease: "out(4)" }, 180)
+      .add(lede,  { opacity: [0, 1], translateY: [28, 0],  duration: 740, ease: "out(3)" }, 580)
+      .add(cta,   { opacity: [0, 1], translateY: [26, 0],  duration: 720, ease: "out(3)" }, 760)
+      .add(hub,   { opacity: [0, 1], translateY: [52, 0], scale: [0.96, 1], duration: 1020, ease: "out(3)" }, 940);
+  }, []);
+
+  return <div ref={ref} className="hero-inner">{children}</div>;
+}
+
+/* ── Staggered reveal — GSAP ScrollTrigger ──────────────────────────────────
    Renders a container and, the first time it scrolls into view, animates its
-   direct children in with a rippling stagger (anime.js v4). The children start
-   hidden (set synchronously to avoid a flash) and ease up into place. Fully
-   skipped for prefers-reduced-motion, where children are simply left visible.
+   direct children in with a rippling stagger driven by ScrollTrigger (so it
+   stays in sync with Lenis smooth scroll). Keeps the original ms-based API
+   (y/step/duration). Fully skipped for prefers-reduced-motion, where children
+   are simply left visible. The gsap.context is reverted on unmount.
    ──────────────────────────────────────────────────────────────────────────── */
 function AnimeStagger({ children, className = "", y = 26, step = 70, duration = 720, threshold = 0.15 }) {
   const ref = useRef(null);
@@ -534,24 +237,41 @@ function AnimeStagger({ children, className = "", y = 26, step = 70, duration = 
     if (!targets.length) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    utils.set(targets, { opacity: 0, translateY: y });
-    const io = new IntersectionObserver((entries, obs) => {
-      entries.forEach((e) => {
-        if (!e.isIntersecting) return;
-        animate(targets, {
-          opacity: [0, 1],
-          translateY: [y, 0],
-          duration,
-          delay: stagger(step),
-          ease: "out(3)",
-        });
-        obs.disconnect();
+    const ctx = gsap.context(() => {
+      gsap.from(targets, {
+        opacity: 0,
+        y,
+        duration: duration / 1000,
+        ease: "power3.out",
+        stagger: step / 1000,
+        scrollTrigger: { trigger: el, start: `top ${100 - threshold * 100}%`, once: true },
       });
-    }, { threshold });
-    io.observe(el);
-    return () => io.disconnect();
+    }, el);
+    return () => ctx.revert();
   }, []);
   return <div ref={ref} className={className}>{children}</div>;
+}
+
+/* ── Parallax — subtle scrubbed drift as the element passes through view ─────
+   Wraps content and translates it on the Y axis as it scrolls through the
+   viewport (scrubbed to scroll position) for layered depth. Skipped for
+   prefers-reduced-motion.
+   ──────────────────────────────────────────────────────────────────────────── */
+function Parallax({ children, className = "", amount = 60, style = {} }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const ctx = gsap.context(() => {
+      gsap.fromTo(el, { y: amount }, {
+        y: -amount, ease: "none",
+        scrollTrigger: { trigger: el, start: "top bottom", end: "bottom top", scrub: true },
+      });
+    }, el);
+    return () => ctx.revert();
+  }, [amount]);
+  return <div ref={ref} className={className} style={style}>{children}</div>;
 }
 
 /* ── Tilt + spotlight card (3D hover) ───────────────────────────────────── */
@@ -800,26 +520,95 @@ function Nav() {
   );
 }
 
+/* ── Typewriter — a caret "reads through" the text, revealing it char by char ─
+   The block caret sits at the leading edge while characters are typed out, then
+   switches to a steady blink once the line finishes. Starts after `startDelay`
+   so it can be synced to the hero intro timeline. Reduced-motion users get the
+   full text immediately with no animation.
+   ──────────────────────────────────────────────────────────────────────────── */
+function Typewriter({ text, startDelay = 0, speed = 24 }) {
+  const reduce =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [count, setCount] = useState(reduce ? text.length : 0);
+  const [done, setDone] = useState(reduce);
+
+  useEffect(() => {
+    if (reduce) return;
+    let i = 0;
+    let tick;
+    const start = setTimeout(() => {
+      tick = setInterval(() => {
+        i += 1;
+        setCount(i);
+        if (i >= text.length) {
+          clearInterval(tick);
+          setDone(true);
+        }
+      }, speed);
+    }, startDelay);
+    return () => {
+      clearTimeout(start);
+      clearInterval(tick);
+    };
+  }, [text, startDelay, speed, reduce]);
+
+  return (
+    <>
+      <span aria-hidden="true">{text.slice(0, count)}</span>
+      <span
+        className={`tw-caret${done ? " tw-caret--blink" : ""}`}
+        aria-hidden="true"
+      />
+    </>
+  );
+}
+
 /* ── Hero ───────────────────────────────────────────────────────────────── */
 function Hero() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const ctx = gsap.context(() => {
+      const scrub = { trigger: root, start: "top top", end: "bottom top", scrub: true };
+      // whole hero content lifts and fades as you scroll past — parallax depth.
+      // (Targets .hero-inner, which the anime.js intro never transforms, so the
+      //  two animations never fight over the same element.)
+      gsap.to(".hero-inner", { yPercent: -16, opacity: 0, ease: "none", scrollTrigger: scrub });
+    }, root);
+    return () => ctx.revert();
+  }, []);
+
   return (
-    <section id="top" className="hero">
+    <section id="top" className="hero" ref={ref}>
+      <HeroGridBackground />
       <div className="hero-veil" />
-      <AnimeStagger className="hero-inner" y={24} step={120} duration={780}>
+      <HeroIntro>
         <div className="hero-badge">Powered by the India Smart Grid Forum · VIT Vellore</div>
         <h1 className="hero-title">
-          We build the <span className="grad-text">grid that thinks.</span>
+          <span className="hero-word">We</span>{" "}
+          <span className="hero-word">build</span>{" "}
+          <span className="hero-word">the</span>{" "}
+          <span className="hero-word grad-text">grid&nbsp;that&nbsp;thinks.</span>
         </h1>
-        <p className="hero-lede">
-          A student-led technical community turning ideas in smart energy, IoT, embedded
-          systems and AI into things you can actually build, break and ship.
+        <p
+          className="hero-lede"
+          aria-label="A student-led technical community turning ideas in smart energy, IoT, embedded systems and AI into things you can actually build, break and ship."
+        >
+          <Typewriter
+            text="A student-led technical community turning ideas in smart energy, IoT, embedded systems and AI into things you can actually build, break and ship."
+            startDelay={1300}
+          />
         </p>
         <div className="hero-cta">
           <Magnetic><a href="#contact" className="btn-primary">Join the chapter <ArrowRight size={17} /></a></Magnetic>
           <Magnetic><a href="#events" className="btn-ghost">Explore events <ArrowUpRight size={16} /></a></Magnetic>
         </div>
         <div className="hero-hub-wrap"><HeroHub /></div>
-      </AnimeStagger>
+      </HeroIntro>
       <a href="#about" className="scroll-cue" aria-label="Scroll to about">
         <ChevronDown size={20} />
       </a>
@@ -886,55 +675,155 @@ function About() {
   );
 }
 
-/* ── Events (interactive switcher) ──────────────────────────────────────── */
+/* ── Events — horizontal-scroll carousel ────────────────────────────────────
+   Six uniform cards stream horizontally with scroll-snap. The card nearest the
+   viewport centre is marked .is-active (sharp); neighbours peek in blurred and
+   faded. Hovering the carousel reveals glowing prev/next arrows that scroll one
+   card at a time (also keyboard-focusable). Tron border glow + reduced-motion
+   handling live in CSS.
+   ──────────────────────────────────────────────────────────────────────────── */
 function Events() {
-  const [sel, setSel] = useState(0);
-  const e = EVENTS[sel];
-  const Icon = e.icon;
+  const trackRef = useRef(null);
+  const [active, setActive] = useState(0);
+  const N = EVENTS.length;
+  // Render three back-to-back copies of the set. We keep the viewport parked on
+  // the middle copy, so every card — including the first and last — always has a
+  // real neighbour peeking on BOTH sides (the last event sits left of the first).
+  const loop = [...EVENTS, ...EVENTS, ...EVENTS];
+
+  // Geometry of the middle copy: where its first card centres (Pn) and the pixel
+  // width of one full copy (seg). Shifting scrollLeft by ±seg lands on identical
+  // content, so the recentre is invisible — the trick behind the endless loop.
+  const measure = () => {
+    const track = trackRef.current;
+    const cards = Array.from(track.querySelectorAll(".event-card"));
+    const centerOf = (i) => cards[i].offsetLeft - (track.clientWidth - cards[i].offsetWidth) / 2;
+    return { cards, centerOf, Pn: centerOf(N), seg: cards[2 * N].offsetLeft - cards[N].offsetLeft };
+  };
+
+  const nearest = (track, cards) => {
+    const center = track.scrollLeft + track.clientWidth / 2;
+    let best = N, bestDist = Infinity;
+    cards.forEach((c, i) => {
+      const d = Math.abs(c.offsetLeft + c.offsetWidth / 2 - center);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    return best;
+  };
+
+  // Park on the middle copy before first paint so there's no visible jump.
+  useLayoutEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    track.scrollLeft = measure().Pn;
+  }, []);
+
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    let raf = 0;
+    const update = () => {
+      const { cards, Pn, seg } = measure();
+      if (!seg) return;
+      // Seamlessly wrap back into the middle copy whenever we drift past an edge.
+      if (track.scrollLeft >= Pn + seg) track.scrollLeft -= seg;
+      else if (track.scrollLeft < Pn) track.scrollLeft += seg;
+      setActive(nearest(track, cards) % N);
+    };
+    const onScroll = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
+    update();
+    track.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      track.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  const go = (dir) => {
+    const track = trackRef.current;
+    if (!track) return;
+    const { cards, centerOf } = measure();
+    // A real neighbour always exists on both sides, so every step glides — no
+    // jarring jump on wrap-around any more.
+    const target = nearest(track, cards) + dir;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    track.scrollTo({ left: centerOf(target), behavior: reduce ? "auto" : "smooth" });
+  };
+
   return (
-    <section id="events" className="section section-alt">
+    <section id="events" className="section section-grid">
       <div className="wrap">
         <Reveal><Eyebrow>What we run</Eyebrow></Reveal>
-        <Reveal delay={60}><h2 className="h2">Flagship events</h2></Reveal>
+        <Reveal delay={60}><h2 className="h2">Events</h2></Reveal>
         <Reveal delay={100}>
-          <p className="section-lede">Competitions and hackathons built to push how students think, code and engineer.</p>
-        </Reveal>
-
-        <Reveal delay={120} className="event-tabs">
-          {EVENTS.map((ev, i) => (
-            <button
-              key={ev.name}
-              className={`event-tab ${sel === i ? "is-active" : ""}`}
-              style={{ "--accent": ev.accent }}
-              onClick={() => setSel(i)}
-            >
-              <span className="event-tab-dot" />
-              {ev.name}
-            </button>
-          ))}
-        </Reveal>
-
-        <Reveal delay={160}>
-          <article key={e.name} className="card event-feature" style={{ "--accent": e.accent }}>
-            <div className="event-feature-main">
-              <div className="event-top">
-                <span className="event-tag">{e.tag}</span>
-                <Icon size={22} className="event-ico" />
-              </div>
-              <h3 className="event-name">{e.name}</h3>
-              <div className="event-motto">{e.motto}</div>
-              <p className="event-desc">{e.desc}</p>
-              <div className="chips">{e.chips.map((c) => <span key={c} className="chip">{c}</span>)}</div>
-              <Magnetic>
-                <a href="#contact" className="btn-primary btn-sm event-cta">Register your interest <ArrowRight size={15} /></a>
-              </Magnetic>
-            </div>
-            <div className="event-feature-side" aria-hidden="true">
-              <div className="event-glow"><Icon size={120} strokeWidth={1} /></div>
-            </div>
-          </article>
+          <p className="section-lede">Competitions, hackathons and industry sessions built to push how students think, code and engineer.</p>
         </Reveal>
       </div>
+
+      <Reveal delay={140} className="event-carousel">
+        <button
+          type="button"
+          className="event-arrow event-arrow-prev"
+          aria-label="Previous event"
+          onClick={() => go(-1)}
+        >
+          <ChevronLeft size={22} />
+        </button>
+
+        <div
+          className="event-track"
+          ref={trackRef}
+          role="group"
+          aria-label="Events carousel — scroll horizontally"
+          tabIndex={0}
+        >
+          {loop.map((e, i) => {
+            const Icon = e.icon;
+            const isActive = i % N === active;
+            const isClone = i < N || i >= 2 * N;
+            return (
+              <article
+                key={`${e.name}-${i}`}
+                className={`event-card event-card-${e.type} ${isActive ? "is-active" : ""}`}
+                style={{ "--accent": e.accent }}
+                aria-current={isActive ? "true" : undefined}
+                aria-hidden={isClone ? "true" : undefined}
+              >
+                <div className="event-media">
+                  {e.type === "image" ? (
+                    <img src={import.meta.env.BASE_URL + e.image} alt={`${e.name} event poster`} className="event-poster" loading="lazy" />
+                  ) : (
+                    <div className="event-icon-panel" aria-hidden="true"><Icon size={104} strokeWidth={1.1} /></div>
+                  )}
+                </div>
+                <div className="event-body">
+                  <span className="event-tag">{e.tag}</span>
+                  <h3 className="event-name">{e.name}</h3>
+                  <div className="event-motto">{e.motto}</div>
+                  <p className="event-desc">{e.desc}</p>
+                  <div className="chips">{e.chips.map((c) => <span key={c} className="chip">{c}</span>)}</div>
+                  {e.upcoming && (
+                    <Magnetic>
+                      <a href="#contact" className="btn-primary btn-sm event-cta" tabIndex={isClone ? -1 : undefined}>Register your interest <ArrowRight size={15} /></a>
+                    </Magnetic>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          className="event-arrow event-arrow-next"
+          aria-label="Next event"
+          onClick={() => go(1)}
+        >
+          <ChevronRight size={22} />
+        </button>
+      </Reveal>
     </section>
   );
 }
@@ -961,16 +850,18 @@ function Team() {
             </Reveal>
           </div>
           <Reveal delay={120} className="team-photo-wrap">
-            {TEAM_PHOTO_URL ? (
-              <img src={TEAM_PHOTO_URL} alt="The ISGF VIT student team" className="team-photo" />
-            ) : (
-              <div className="team-photo team-photo-empty">
-                <Users size={40} strokeWidth={1.4} />
-                <span>Add your team photo</span>
-                <small>set TEAM_PHOTO_URL in the code</small>
-              </div>
-            )}
-            <div className="team-frame" />
+            <Parallax amount={28}>
+              {TEAM_PHOTO_URL ? (
+                <img src={TEAM_PHOTO_URL} alt="The ISGF VIT student team" className="team-photo" />
+              ) : (
+                <div className="team-photo team-photo-empty">
+                  <Users size={40} strokeWidth={1.4} />
+                  <span>Add your team photo</span>
+                  <small>set TEAM_PHOTO_URL in the code</small>
+                </div>
+              )}
+              <div className="team-frame" />
+            </Parallax>
           </Reveal>
         </div>
       </div>
@@ -1002,11 +893,13 @@ function Sponsors() {
             </Reveal>
           </div>
           <Reveal delay={120} className="sponsor-target-wrap">
-            <TiltCard className="sponsor-target" max={6}>
-              <Target size={26} />
-              <b>Reach + impact</b>
-              <p>Website, posters, certificates, merch, stage screens and social — your brand, everywhere the event is.</p>
-            </TiltCard>
+            <Parallax amount={34}>
+              <TiltCard className="sponsor-target" max={6}>
+                <Target size={26} />
+                <b>Reach + impact</b>
+                <p>Website, posters, certificates, merch, stage screens and social — your brand, everywhere the event is.</p>
+              </TiltCard>
+            </Parallax>
           </Reveal>
         </div>
 
@@ -1027,7 +920,6 @@ function Sponsors() {
 function Contact() {
   return (
     <section id="contact" className="section contact">
-      <GridCanvas spacing={140} opacity={0.55} />
       <div className="contact-veil" />
       <div className="wrap contact-inner">
         <Reveal><Eyebrow>Get in touch</Eyebrow></Reveal>
@@ -1038,6 +930,9 @@ function Contact() {
             <h4>Online</h4>
             <a href="mailto:isgf@vit.ac.in" className="contact-line">
               <Mail size={16} /><span>Email<small>isgf@vit.ac.in</small></span>
+            </a>
+            <a href="https://www.instagram.com/isgf_vit" className="contact-line" target="_blank" rel="noopener noreferrer">
+              <Instagram size={16} /><span>Instagram<small>@isgf_vit</small></span>
             </a>
           </Reveal>
           <Reveal delay={220} className="contact-col">
@@ -1065,6 +960,7 @@ function Footer() {
         </nav>
         <div className="footer-social">
           <a href="mailto:isgf@vit.ac.in" aria-label="Email"><Mail size={18} /></a>
+          <a href="https://www.instagram.com/isgf_vit" aria-label="Instagram" target="_blank" rel="noopener noreferrer"><Instagram size={18} /></a>
         </div>
       </div>
       <div className="footer-base">© {new Date().getFullYear()} ISGF — VIT Vellore Student Chapter. Built by students, for students.</div>
@@ -1073,10 +969,126 @@ function Footer() {
 }
 
 /* ── App ────────────────────────────────────────────────────────────────── */
+/* ── Stat dashboard strip — GSAP ScrollTrigger ──────────────────────────────
+   A row of metric cards that slide up in a left→right stagger the first time
+   the strip scrolls into view, while each number counts up from zero. Hover
+   lifts a card (GSAP) and intensifies its border/glow (CSS). The GSAP context
+   is reverted on unmount so ScrollTriggers are cleaned up. Reduced-motion users
+   get the final numbers immediately with no entrance or count-up.
+   ──────────────────────────────────────────────────────────────────────────── */
+const STATS = [
+  { icon: Users,  label: "ACTIVE_MEMBERS",   value: 120, suffix: "+", accent: "var(--green)"   },
+  { icon: Rocket, label: "PROJECTS_SHIPPED", value: 35,  suffix: "+", accent: "var(--cyan)"    },
+  { icon: Trophy, label: "EVENTS_RUN",       value: 18,  suffix: "",  accent: "var(--teal)"    },
+  { icon: Target, label: "FOCUS_DOMAINS",    value: 5,   suffix: "",  accent: "var(--green-2)" },
+];
+
+function StatStrip() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const nums = root.querySelectorAll(".stat-num");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (reduce) {
+      nums.forEach((el) => { el.textContent = el.dataset.value + (el.dataset.suffix || ""); });
+      return;
+    }
+
+    const ctx = gsap.context(() => {
+      const trigger = { trigger: root, start: "top 82%", once: true };
+      gsap.from(".stat-card", {
+        y: 64, opacity: 0, duration: 0.7, ease: "power3.out",
+        stagger: 0.12, scrollTrigger: trigger,
+      });
+      nums.forEach((el) => {
+        const end = Number(el.dataset.value);
+        const suffix = el.dataset.suffix || "";
+        const obj = { v: 0 };
+        gsap.to(obj, {
+          v: end, duration: 1.4, ease: "power2.out", scrollTrigger: trigger,
+          onUpdate: () => { el.textContent = Math.round(obj.v) + suffix; },
+        });
+      });
+    }, root);
+    return () => ctx.revert();
+  }, []);
+
+  const lift = (e) => gsap.to(e.currentTarget, { y: -8, duration: 0.3, ease: "power2.out", overwrite: "auto" });
+  const drop = (e) => gsap.to(e.currentTarget, { y: 0, duration: 0.4, ease: "power2.out", overwrite: "auto" });
+
+  return (
+    <section className="stat-strip" aria-label="Chapter at a glance" ref={ref}>
+      <div className="wrap stat-grid">
+        {STATS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <article
+              key={s.label}
+              className="stat-card"
+              style={{ "--accent": s.accent }}
+              onPointerEnter={lift}
+              onPointerLeave={drop}
+            >
+              <div className="stat-top">
+                <span className="stat-ico"><Icon size={18} strokeWidth={2} /></span>
+                <span className="stat-label">{s.label}</span>
+              </div>
+              <div className="stat-num" data-value={s.value} data-suffix={s.suffix}>
+                0{s.suffix}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/* ── Lenis smooth scroll, driven by the GSAP ticker ─────────────────────────
+   Lenis takes over wheel/touch scrolling for an inertial feel and pushes every
+   frame through gsap.ticker so ScrollTrigger stays perfectly in sync. In-page
+   anchor links are routed through lenis.scrollTo (offset for the fixed nav).
+   Disabled entirely for prefers-reduced-motion, leaving native scrolling.
+   ──────────────────────────────────────────────────────────────────────────── */
+function SmoothScroll() {
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const lenis = new Lenis({ duration: 1.1, smoothWheel: true });
+    lenis.on("scroll", ScrollTrigger.update);
+    const tick = (time) => lenis.raf(time * 1000);
+    gsap.ticker.add(tick);
+    gsap.ticker.lagSmoothing(0);
+
+    const onClick = (e) => {
+      const a = e.target.closest('a[href^="#"]');
+      if (!a) return;
+      const id = a.getAttribute("href");
+      if (id.length < 2) return;
+      const target = document.querySelector(id);
+      if (!target) return;
+      e.preventDefault();
+      lenis.scrollTo(target, { offset: -70 });
+    };
+    document.addEventListener("click", onClick);
+
+    return () => {
+      document.removeEventListener("click", onClick);
+      gsap.ticker.remove(tick);
+      lenis.destroy();
+    };
+  }, []);
+  return null;
+}
+
 export default function App() {
+  const [loading, setLoading] = useState(true);
   return (
     <div className="isgf-root">
-      <GridField />
+      {loading && <Loader onDone={() => setLoading(false)} />}
+      <SmoothScroll />
       <ScrollProgress />
       <CursorGlow />
       <Nav />
@@ -1091,5 +1103,6 @@ export default function App() {
       </main>
       <Footer />
     </div>
+    
   );
 }
